@@ -1,17 +1,28 @@
 package com.hellowo.hellochacha;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Status;
 import com.google.android.gms.games.Games;
+import com.google.android.gms.games.multiplayer.Multiplayer;
+import com.google.android.gms.games.multiplayer.realtime.RoomConfig;
+import com.google.android.gms.games.multiplayer.turnbased.TurnBasedMatch;
+import com.google.android.gms.games.multiplayer.turnbased.TurnBasedMatchConfig;
+import com.google.android.gms.games.multiplayer.turnbased.TurnBasedMultiplayer;
 import com.google.example.games.basegameutils.BaseGameUtils;
+
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements
         GoogleApiClient.ConnectionCallbacks,
@@ -20,6 +31,7 @@ public class MainActivity extends AppCompatActivity implements
     private GoogleApiClient mGoogleApiClient;
 
     private static int RC_SIGN_IN = 9001;
+    private static int RC_SELECT_PLAYERS = 9002;
 
     private boolean mResolvingConnectionFailure = false;
     private boolean mAutoStartSignInFlow = true;
@@ -43,6 +55,14 @@ public class MainActivity extends AppCompatActivity implements
             @Override
             public void onClick(View view) {
                 signInClicked();
+            }
+        });
+
+        Button startMatch = (Button)findViewById(R.id.startMatch);
+        startMatch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                onStartMatchClicked(view);
             }
         });
     }
@@ -105,6 +125,38 @@ public class MainActivity extends AppCompatActivity implements
             mResolvingConnectionFailure = false;
             if (resultCode == RESULT_OK) {
                 mGoogleApiClient.connect();
+            } else if (resultCode == RC_SELECT_PLAYERS) {
+                if (resultCode != Activity.RESULT_OK) {
+                    // user canceled
+                    return;
+                }
+
+                // Get the invitee list.
+                final ArrayList<String> invitees =
+                        intent.getStringArrayListExtra(Games.EXTRA_PLAYER_IDS);
+
+                // Get auto-match criteria.
+                Bundle autoMatchCriteria = null;
+                int minAutoMatchPlayers = intent.getIntExtra(
+                        Multiplayer.EXTRA_MIN_AUTOMATCH_PLAYERS, 0);
+                int maxAutoMatchPlayers = intent.getIntExtra(
+                        Multiplayer.EXTRA_MAX_AUTOMATCH_PLAYERS, 0);
+                if (minAutoMatchPlayers > 0) {
+                    autoMatchCriteria = RoomConfig.createAutoMatchCriteria(
+                            minAutoMatchPlayers, maxAutoMatchPlayers, 0);
+                } else {
+                    autoMatchCriteria = null;
+                }
+
+                TurnBasedMatchConfig tbmc = TurnBasedMatchConfig.builder()
+                        .addInvitedPlayers(invitees)
+                        .setAutoMatchCriteria(autoMatchCriteria)
+                        .build();
+
+                // Create and start the match.
+                Games.TurnBasedMultiplayer
+                        .createMatch(mGoogleApiClient, tbmc)
+                        .setResultCallback(new MatchInitiatedCallback());
             } else {
                 // Bring up an error dialog to alert the user that sign-in
                 // failed. The R.string.signin_failure should reference an error
@@ -126,5 +178,39 @@ public class MainActivity extends AppCompatActivity implements
     private void signOutclicked() {
         mSignInClicked = false;
         Games.signOut(mGoogleApiClient);
+    }
+
+    public void onStartMatchClicked(View view) {
+        Intent intent =
+                Games.TurnBasedMultiplayer.getSelectOpponentsIntent(mGoogleApiClient, 1, 7, true);
+        startActivityForResult(intent, RC_SELECT_PLAYERS);
+    }
+
+    public class MatchInitiatedCallback implements
+            ResultCallback<TurnBasedMultiplayer.InitiateMatchResult> {
+
+        @Override
+        public void onResult(TurnBasedMultiplayer.InitiateMatchResult result) {
+            // Check if the status code is not success.
+            Status status = result.getStatus();
+            if (!status.isSuccess()) {
+                Log.d("error", ""+status.getStatusCode());
+                return;
+            }
+
+            TurnBasedMatch match = result.getMatch();
+
+            // If this player is not the first player in this match, continue.
+            if (match.getData() != null) {
+                //showTurnUI(match);
+                return;
+            }
+
+            // Otherwise, this is the first player. Initialize the game state.
+            //initGame(match);
+
+            // Let the player take the first turn
+            //showTurnUI(match);
+        }
     }
 }
