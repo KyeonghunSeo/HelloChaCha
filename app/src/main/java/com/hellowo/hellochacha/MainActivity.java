@@ -8,7 +8,9 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -40,6 +42,7 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        hideStatusBar();
         setContentView(R.layout.activity_main);
 
         // Create the Google Api Client with access to the Play Games services
@@ -50,21 +53,32 @@ public class MainActivity extends AppCompatActivity implements
                 // add other APIs and scopes here as needed
                 .build();
 
-        Button button = (Button)findViewById(R.id.button);
+        final ChaChaBoard board = new ChaChaBoard((FrameLayout)findViewById(R.id.rootView));
+        int[] icons = new int[]{
+                R.drawable.cha_0,
+                R.drawable.cha_1,
+                R.drawable.cha_2,
+                R.drawable.cha_3,
+                R.drawable.cha_4,
+                R.drawable.cha_5,
+                R.drawable.cha_6,
+                R.drawable.cha_7
+        };
+        board.initCells(icons, 3);
+        board.addPlayer(new ChaChaPlayer("hellowo86"));
+
+        final Button button = (Button)findViewById(R.id.button);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                signInClicked();
+                button.setVisibility(View.GONE);
+                board.startGame();
             }
         });
+    }
 
-        Button startMatch = (Button)findViewById(R.id.startMatch);
-        startMatch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                onStartMatchClicked(view);
-            }
-        });
+    private void hideStatusBar() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
     }
 
     @Override
@@ -81,7 +95,6 @@ public class MainActivity extends AppCompatActivity implements
 
     @Override
     public void onConnected(@Nullable Bundle bundle) {
-        findViewById(R.id.button).setVisibility(View.GONE);
     }
 
     @Override
