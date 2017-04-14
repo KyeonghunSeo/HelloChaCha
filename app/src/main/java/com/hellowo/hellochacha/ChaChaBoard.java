@@ -1,28 +1,46 @@
 package com.hellowo.hellochacha;
 
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Message;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 public class ChaChaBoard {
     Context context;
     FrameLayout rootView;
     List<ChaChaPlayer> playerList;
-    List<Chip> hidingCellList;
-    List<Cell> pathCellList;
-
+    List<Chip> chipList;
+    List<Cell> cellList;
+    Cell headerCell;
+    ChaChaTurn turn;
     int[] characterImageIds;
+
+    boolean isOpenedChip;
+    int widthCount;
+    int heightCount;
+    int cellSize;
+    int widthOffset;
+    int widthMargin;
+
+    int chipHeightCount = 3;
+    int chipWidthCount;
+    int chipsWidthPos;
+    int chipHeightPos;
 
     public ChaChaBoard(FrameLayout frameLayout) {
         context = frameLayout.getContext();
         rootView = frameLayout;
         playerList = new ArrayList<>();
-        hidingCellList = new ArrayList<>();
-        pathCellList = new ArrayList<>();
+        chipList = new ArrayList<>();
+        cellList = new ArrayList<>();
         /*
         rootView.getViewTreeObserver().addOnGlobalLayoutListener(
                 new ViewTreeObserver.OnGlobalLayoutListener() {
@@ -39,47 +57,69 @@ public class ChaChaBoard {
     }
 
     public void initCells(int[] characterImageIds, int level) {
-        for(Chip chip : hidingCellList) {
-            chip.removeView(rootView);
-        }
-
-        for(Cell cell : pathCellList) {
-            cell.removeView(rootView);
-        }
-
-        hidingCellList.clear();
-        pathCellList.clear();
-
         this.characterImageIds = characterImageIds;
         int hidingCellCount = characterImageIds.length;
 
         for (int i = 0; i < hidingCellCount; i++) {
             Chip chip = new Chip(i, rootView);
-            hidingCellList.add(chip);
+            chipList.add(chip);
         }
 
-        for (int i = 0; i < hidingCellCount * level; i++) {
+        headerCell = new Cell(0, rootView);
+        cellList.add(headerCell);
+        Cell prevCell = headerCell;
+
+        for (int i = 1; i < hidingCellCount * level; i++) {
             Cell cell = new Cell(i % hidingCellCount, rootView);
-            pathCellList.add(cell);
+            cellList.add(cell);
+            prevCell.nextCell = cell;
+            prevCell = cell;
         }
+
+        prevCell.nextCell = headerCell;
+    }
+
+    private void resetGame() {
+        for(Chip chip : chipList) {
+            chip.removeView(rootView);
+        }
+
+        for(Cell cell : cellList) {
+            cell.removeView(rootView);
+        }
+
+        for(ChaChaPlayer player : playerList) {
+            player.removeView(rootView);
+        }
+
+        chipList.clear();
+        cellList.clear();
+        playerList.clear();
     }
 
     public void addPlayer(ChaChaPlayer player) {
+        player.addPlayerView(rootView, cellSize);
         playerList.add(player);
     }
 
-    private void drawBoard() {
+    public void startGame() {
+        onBoardPlayers();
+        startMatch();
+    }
+
+    public void drawBoard() {
         int width = rootView.getWidth();
         int height = rootView.getHeight();
 
-        int widthCount = pathCellList.size() / 3;
-        int heightCount = ( pathCellList.size() - ( widthCount * 2 ) ) / 2;
-        int cellSize = height / (heightCount + 2);
-        int widthOffset = width / widthCount;
-        int widthMargin = (widthOffset - cellSize) / 2;
+        widthCount = cellList.size() / 3;
+        heightCount = ( cellList.size() - ( widthCount * 2 ) ) / 2;
+        cellSize = height / (heightCount + 2);
+        widthOffset = width / widthCount;
+        widthMargin = (widthOffset - cellSize) / 2;
 
-        for (int i = 0; i < pathCellList.size(); i++) {
-            Cell cell = pathCellList.get(i);
+        for (int i = 0; i < cellList.size(); i++) {
+            Cell cell = cellList.get(i);
+            cell.imageView.setVisibility(View.VISIBLE);
 
             cell.imageView.setLayoutParams(new FrameLayout.LayoutParams(cellSize, cellSize));
 
@@ -106,16 +146,18 @@ public class ChaChaBoard {
             }
         }
 
-        int chipHeightCount = 3;
-        if(hidingCellList.size() < 10) {
+        chipHeightCount = 3;
+        if(chipList.size() < 10) {
             chipHeightCount = 2;
         }
-        int chipWidthCount = hidingCellList.size() / chipHeightCount;
-        int chipsWidthPos = (width - chipWidthCount * cellSize) / 2;
-        int chipHeightPos = (height - chipHeightCount * cellSize) / 2;
+        chipWidthCount = chipList.size() / chipHeightCount;
+        chipsWidthPos = (width - chipWidthCount * cellSize) / 2;
+        chipHeightPos = (height - chipHeightCount * cellSize) / 2;
 
-        for (int i = 0; i < hidingCellList.size(); i++) {
-            Chip chip = hidingCellList.get(i);
+        for (int i = 0; i < chipList.size(); i++) {
+            Chip chip = chipList.get(i);
+            chip.frontView.setVisibility(View.GONE);
+            chip.backView.setVisibility(View.VISIBLE);
 
             chip.frontView.setLayoutParams(new FrameLayout.LayoutParams(cellSize, cellSize));
             chip.backView.setLayoutParams(new FrameLayout.LayoutParams(cellSize, cellSize));
@@ -127,11 +169,20 @@ public class ChaChaBoard {
         }
     }
 
-    public void startGame() {
-        drawBoard();
+    private void onBoardPlayers() {
+        int initInterval = cellList.size() / playerList.size();
+        for (int i = 0; i < playerList.size(); i++) {
+            playerList.get(i).move(cellList.get(i * initInterval));
+        }
+    }
+
+    private void startMatch() {
+        turn = new ChaChaTurn();
+        turn.playerIndex = 0;
     }
 
     class Cell {
+        Cell nextCell;
         ImageView imageView;
         int id;
 
@@ -140,11 +191,16 @@ public class ChaChaBoard {
             imageView = new ImageView(rootView.getContext());
             imageView.setImageResource(characterImageIds[id]);
             imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            imageView.setVisibility(View.GONE);
             rootView.addView(imageView);
         }
 
         public void removeView(FrameLayout rootView) {
             rootView.removeView(imageView);
+        }
+
+        public Cell getNextCell() {
+            return nextCell;
         }
     }
 
@@ -152,9 +208,16 @@ public class ChaChaBoard {
         ImageView frontView;
         ImageView backView;
         int id;
-        boolean isOpened;
 
-        public Chip(int id, FrameLayout rootView) {
+        final Handler closeHandler = new Handler(){
+            @Override
+            public void handleMessage(Message msg) {
+                super.handleMessage(msg);
+                close();
+            }
+        };
+
+        public Chip(final int id, FrameLayout rootView) {
             this.id = id;
             frontView = new ImageView(rootView.getContext());
             frontView.setImageResource(characterImageIds[id]);
@@ -165,12 +228,90 @@ public class ChaChaBoard {
             backView = new ImageView(rootView.getContext());
             backView.setImageResource(R.mipmap.ic_launcher);
             backView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            backView.setVisibility(View.GONE);
             rootView.addView(backView);
+
+            backView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    if(!isOpenedChip) {
+                        open();
+
+                        ChaChaPlayer player = getCurrentTurnPlayer();
+                        Cell nextCell = player.currentCell.getNextCell();
+
+                        if(id == nextCell.id) {
+                            player.move(nextCell);
+                        }else{
+
+                        }
+                    }
+                }
+            });
+        }
+
+        private void open() {
+            isOpenedChip = true;
+
+            Animator anim = ObjectAnimator
+                    .ofFloat(backView, "rotationY", 0f, 90f)
+                    .setDuration(125);
+
+            anim.addListener(new Animator.AnimatorListener() {
+                @Override
+                public void onAnimationStart(Animator animator) {}
+                @Override
+                public void onAnimationEnd(Animator animator) {
+                    backView.setVisibility(View.GONE);
+                    frontView.setVisibility(View.VISIBLE);
+                    ObjectAnimator
+                            .ofFloat(frontView, "rotationY", 270f, 360f)
+                            .setDuration(125).start();
+                    closeHandler.sendEmptyMessageDelayed(0, 500);
+                }
+                @Override
+                public void onAnimationCancel(Animator animator) {}
+                @Override
+                public void onAnimationRepeat(Animator animator) {}
+            });
+
+            anim.start();
+        }
+
+        private void close() {
+            isOpenedChip = false;
+
+            Animator anim = ObjectAnimator
+                    .ofFloat(frontView, "rotationY", 0f, 90f)
+                    .setDuration(125);
+
+            anim.addListener(new Animator.AnimatorListener() {
+                @Override
+                public void onAnimationStart(Animator animator) {}
+                @Override
+                public void onAnimationEnd(Animator animator) {
+                    frontView.setVisibility(View.GONE);
+                    backView.setVisibility(View.VISIBLE);
+                    ObjectAnimator
+                            .ofFloat(backView, "rotationY", 270f, 360f)
+                            .setDuration(125).start();
+                }
+                @Override
+                public void onAnimationCancel(Animator animator) {}
+                @Override
+                public void onAnimationRepeat(Animator animator) {}
+            });
+
+            anim.start();
         }
 
         public void removeView(FrameLayout rootView) {
             rootView.removeView(frontView);
             rootView.removeView(backView);
         }
+    }
+
+    private ChaChaPlayer getCurrentTurnPlayer() {
+        return playerList.get(turn.playerIndex);
     }
 }

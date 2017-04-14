@@ -29,8 +29,12 @@ public class ChaChaTurn {
 
     public String data = "";
     public int turnCounter;
+    public int playerIndex;
 
-    public ChaChaTurn() {}
+    public ChaChaTurn() {
+        turnCounter = 1;
+        playerIndex = -1;
+    }
 
     // This is the byte array we will write out to the TBMP API.
     public byte[] persist() {
